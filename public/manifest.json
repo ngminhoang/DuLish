@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "DuLish Extension Dev",
+  "version": "1.0",
+  "permissions": ["storage", "contextMenus", "scripting", "tabs","commands"],
+  "background": {
+    "service_worker": "extension/background.js"
+  },
+  "commands": {
+    "reload": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Z"
+      },
+      "description": "Reload the extension"
+    }
+  },
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "DuLish"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["extension/contentScript.js"]
+    }
+  ]
+}
