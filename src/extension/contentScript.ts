@@ -1,21 +1,20 @@
 let floatingContainer: HTMLDivElement | null = null;
 let isPopupVisible = false;
 
-document.addEventListener("click", (e) => {
-    const selection = window.getSelection()?.toString().trim();
-    if (selection) return; // Đang bôi đen, đừng xoá gì cả
+document.addEventListener("mousedown", (e) => {
+    // const selection = window.getSelection()?.toString().trim();
+    // if (selection) return; // Đang bôi đen, đừng xoá gì cả
 
     // Nếu không còn chọn gì mà click ngoài container thì xoá
-    setTimeout(() => {
+
         if (floatingContainer && !floatingContainer.contains(e.target as Node)) {
             floatingContainer.remove();
             floatingContainer = null;
             isPopupVisible = false;
         }
-    }, 50);
 });
 
-document.addEventListener("onselect", (e) => {
+document.addEventListener("mouseup", (e) => {
     const selection = window.getSelection()?.toString().trim();
 
 
