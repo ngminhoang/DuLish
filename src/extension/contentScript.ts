@@ -7,18 +7,22 @@ document.addEventListener("mousedown", (e) => {
 
     // Nếu không còn chọn gì mà click ngoài container thì xoá
 
-        if (floatingContainer && !floatingContainer.contains(e.target as Node)) {
-            floatingContainer.remove();
-            floatingContainer = null;
-            isPopupVisible = false;
-        }
+    if (floatingContainer && !floatingContainer.contains(e.target as Node)) {
+        floatingContainer.remove();
+        floatingContainer = null;
+        isPopupVisible = false;
+    }
 });
 
 document.addEventListener("mouseup", (e) => {
     const selection = window.getSelection()?.toString().trim();
 
 
-    if (selection && /^[a-zA-Z]+$/.test(selection) && !(e.target instanceof HTMLButtonElement)) {
+    if (floatingContainer && isPopupVisible) {
+        floatingContainer.remove();
+        floatingContainer = null;
+        isPopupVisible = false;
+    } else if (selection && /^[a-zA-Z]+$/.test(selection) && !(e.target instanceof HTMLButtonElement)) {
         const range = window.getSelection()?.getRangeAt(0);
         const rect = range?.getBoundingClientRect();
         if (!rect) return;
@@ -71,7 +75,7 @@ document.addEventListener("mouseup", (e) => {
             saveButton.style.cursor = "pointer";
             saveButton.onclick = (e) => {
                 e.stopPropagation();
-                chrome.runtime.sendMessage({ action: "saveWord", word: selection });
+                chrome.runtime.sendMessage({action: "saveWord", word: selection});
 
                 // Remove everything after save
                 floatingContainer?.remove();
