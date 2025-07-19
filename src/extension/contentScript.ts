@@ -1,31 +1,60 @@
 let floatingContainer: HTMLDivElement | null = null;
 let isPopupVisible = false;
 
-document.addEventListener("mousedown", (e) => {
-    // const selection = window.getSelection()?.toString().trim();
-    // if (selection) return; // Đang bôi đen, đừng xoá gì cả
+interface DictionaryResult {
+    word: string;
+    phonetic?: string;
+    meaning?: string;
+    translated: boolean;
+}
 
-    // Nếu không còn chọn gì mà click ngoài container thì xoá
+async function lookupWord(word: string): Promise<DictionaryResult> {
+    const lowercaseWord = word.toLowerCase();
+    const response = await fetch(chrome.runtime.getURL('english-vietnamese.txt'));
+    const dictionaryText = await response.text();
 
-    if (floatingContainer && !floatingContainer.contains(e.target as Node)) {
-        floatingContainer.remove();
-        floatingContainer = null;
-        isPopupVisible = false;
+    const lines = dictionaryText.split('\n');
+    const target = `@${lowercaseWord} `;
+
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].toLowerCase().startsWith(target)) {
+            const phoneticMatch = lines[i].match(/\/(.*?)\//);
+            const phonetic = phoneticMatch ? `/${phoneticMatch[1]}/` : undefined;
+
+            let meaningLines: string[] = [];
+            for (let j = i + 1; j < lines.length; j++) {
+                if (lines[j].startsWith('@')) break;
+                meaningLines.push(lines[j].trim());
+            }
+
+            return {
+                word,
+                phonetic,
+                meaning: meaningLines.join('\n'),
+                translated: true
+            };
+        }
     }
-});
 
-document.addEventListener("mouseup", (e) => {
+    return {
+        word,
+        translated: false
+    };
+}
+
+document.addEventListener("mouseup", async (e) => {
     const selection = window.getSelection()?.toString().trim();
-
 
     if (floatingContainer && isPopupVisible) {
         floatingContainer.remove();
         floatingContainer = null;
         isPopupVisible = false;
-    } else if (selection && /^[a-zA-Z]+$/.test(selection) && !(e.target instanceof HTMLButtonElement)) {
+    } else if (selection && /^[a-zA-Z\-]+$/.test(selection) && !(e.target instanceof HTMLButtonElement)) {
         const range = window.getSelection()?.getRangeAt(0);
         const rect = range?.getBoundingClientRect();
         if (!rect) return;
+
+        const result = await lookupWord(selection);
 
         // Tạo container mới
         floatingContainer = document.createElement("div");
@@ -42,6 +71,7 @@ document.addEventListener("mouseup", (e) => {
         icon.textContent = "🤓";
         icon.style.cursor = "pointer";
         icon.style.fontSize = "28px";
+
         icon.onclick = (ev) => {
             ev.stopPropagation();
             ev.preventDefault();
@@ -50,8 +80,8 @@ document.addEventListener("mouseup", (e) => {
 
             const popup = document.createElement("div");
             popup.style.marginTop = "5px";
-            popup.style.width = "150px";
-            popup.style.height = "100px";
+            popup.style.minWidth = "200px";
+            popup.style.maxWidth = "300px";
             popup.style.backgroundColor = "#f9f9f9";
             popup.style.border = "1px solid #ccc";
             popup.style.borderRadius = "8px";
@@ -59,31 +89,37 @@ document.addEventListener("mouseup", (e) => {
             popup.style.display = "flex";
             popup.style.flexDirection = "column";
             popup.style.justifyContent = "center";
-            popup.style.alignItems = "center";
+            popup.style.alignItems = "flex-start";
             popup.style.padding = "10px";
+            popup.style.fontFamily = "Arial, sans-serif";
 
             const wordElement = document.createElement("div");
-            wordElement.textContent = selection;
-            wordElement.style.fontSize = "16px";
-            wordElement.style.fontWeight = "bold";
+            wordElement.innerHTML = `<strong>${result.word}</strong> ${result.phonetic || ""}`;
             wordElement.style.marginBottom = "8px";
+            popup.appendChild(wordElement);
+
+            const meaningElement = document.createElement("div");
+            meaningElement.textContent = result.translated ? result.meaning! : "Không tìm thấy nghĩa.";
+            meaningElement.style.fontSize = "14px";
+            meaningElement.style.whiteSpace = "pre-line";
+            meaningElement.style.marginBottom = "10px";
+            popup.appendChild(meaningElement);
 
             const saveButton = document.createElement("button");
             saveButton.textContent = "Save";
             saveButton.style.padding = "5px 10px";
             saveButton.style.fontSize = "14px";
             saveButton.style.cursor = "pointer";
+
             saveButton.onclick = (e) => {
                 e.stopPropagation();
-                chrome.runtime.sendMessage({action: "saveWord", word: selection});
+                chrome.runtime.sendMessage({ action: "saveWord", word: selection });
 
-                // Remove everything after save
                 floatingContainer?.remove();
                 floatingContainer = null;
                 isPopupVisible = false;
             };
 
-            popup.appendChild(wordElement);
             popup.appendChild(saveButton);
             floatingContainer?.appendChild(popup);
             isPopupVisible = true;
