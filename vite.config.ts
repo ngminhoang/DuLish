@@ -9,10 +9,12 @@ export default defineConfig({
       input: {
         popup: resolve(__dirname, 'index.html'),
         content: resolve(__dirname, 'src/extension/contentScript.ts'),
+        background: resolve(__dirname, 'src/extension/background.ts'), // ✅ THÊM DÒNG NÀY
       },
       output: {
         entryFileNames: (chunk) => {
           if (chunk.name === 'content') return 'extension/contentScript.js';
+          if (chunk.name === 'background') return 'extension/background.js';
           if (chunk.name === 'popup') return 'popup.js';
           return '[name].js';
         },
