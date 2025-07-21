@@ -8,6 +8,18 @@ interface DictionaryResult {
     translated: boolean;
 }
 
+interface MeaningGroup {
+    type: string;
+    lines: string[];
+}
+
+interface DictionaryResult {
+    word: string;
+    phonetic?: string;
+    meanings: MeaningGroup[];  // đổi từ meaning sang meanings
+    translated: boolean;
+}
+
 async function lookupWord(word: string): Promise<DictionaryResult> {
     const lowercaseWord = word.toLowerCase();
     const response = await fetch(chrome.runtime.getURL('english-vietnamese.txt'));
@@ -21,16 +33,34 @@ async function lookupWord(word: string): Promise<DictionaryResult> {
             const phoneticMatch = lines[i].match(/\/(.*?)\//);
             const phonetic = phoneticMatch ? `/${phoneticMatch[1]}/` : undefined;
 
-            let meaningLines: string[] = [];
+            const meanings: MeaningGroup[] = [];
+            let currentType = "";
+            let currentLines: string[] = [];
+
             for (let j = i + 1; j < lines.length; j++) {
-                if (lines[j].startsWith('@')) break;
-                meaningLines.push(lines[j].trim());
+                const line = lines[j].trim();
+                if (line.startsWith('@')) break;
+
+                const typeMatch = line.match(/^\*\s+(.*?)$/); // dòng kiểu "*  danh từ"
+                if (typeMatch) {
+                    if (currentType || currentLines.length > 0) {
+                        meanings.push({ type: currentType, lines: currentLines });
+                    }
+                    currentType = typeMatch[1].trim();
+                    currentLines = [];
+                } else {
+                    currentLines.push(line);
+                }
+            }
+
+            if (currentType || currentLines.length > 0) {
+                meanings.push({ type: currentType, lines: currentLines });
             }
 
             return {
                 word,
                 phonetic,
-                meaning: meaningLines.join('\n'),
+                meanings,
                 translated: true
             };
         }
@@ -38,9 +68,23 @@ async function lookupWord(word: string): Promise<DictionaryResult> {
 
     return {
         word,
+        meanings: [],
         translated: false
     };
 }
+
+document.addEventListener("mousedown", (e) => {
+    // const selection = window.getSelection()?.toString().trim();
+    // if (selection) return; // Đang bôi đen, đừng xoá gì cả
+
+    // Nếu không còn chọn gì mà click ngoài container thì xoá
+
+    if (floatingContainer && !floatingContainer.contains(e.target as Node)) {
+        floatingContainer.remove();
+        floatingContainer = null;
+        isPopupVisible = false;
+    }
+});
 
 document.addEventListener("mouseup", async (e) => {
     const selection = window.getSelection()?.toString().trim();
@@ -98,13 +142,6 @@ document.addEventListener("mouseup", async (e) => {
             wordElement.style.marginBottom = "8px";
             popup.appendChild(wordElement);
 
-            const meaningElement = document.createElement("div");
-            meaningElement.textContent = result.translated ? result.meaning! : "Không tìm thấy nghĩa.";
-            meaningElement.style.fontSize = "14px";
-            meaningElement.style.whiteSpace = "pre-line";
-            meaningElement.style.marginBottom = "10px";
-            popup.appendChild(meaningElement);
-
             const saveButton = document.createElement("button");
             saveButton.textContent = "Save";
             saveButton.style.padding = "5px 10px";
@@ -121,6 +158,51 @@ document.addEventListener("mouseup", async (e) => {
             };
 
             popup.appendChild(saveButton);
+
+            const meaningElement = document.createElement("div");
+            if (result.translated) {
+                result.meanings.forEach((group) => {
+                    const groupDiv = document.createElement("div");
+                    groupDiv.style.marginBottom = "10px";
+                    groupDiv.style.width = "100%";
+
+                    const title = document.createElement("div");
+                    title.textContent = group.type;
+                    title.style.fontWeight = "bold";
+                    title.style.color = "#336699";
+                    title.style.marginBottom = "4px";
+                    groupDiv.appendChild(title);
+
+                    const ul = document.createElement("ul");
+                    ul.style.margin = "0";
+                    ul.style.paddingLeft = "20px";
+
+                    group.lines.forEach(line => {
+                        if(line!=""){
+                            line = line.replace("-","");
+                            line = line.replace("=","");
+                            line = line.replace("+","=");
+                            const li = document.createElement("li");
+                            // li.style.color = "#000000";
+                            li.textContent = line;
+                            ul.appendChild(li);
+                        }
+                    });
+
+                    groupDiv.appendChild(ul);
+                    meaningElement.appendChild(groupDiv);
+                });
+            } else {
+                meaningElement.textContent = "Không tìm thấy nghĩa.";
+            }
+            // meaningElement.textContent = result.translated ? result.meaning! : "Không tìm thấy nghĩa.";
+            meaningElement.style.fontSize = "14px";
+            meaningElement.style.whiteSpace = "pre-line";
+            meaningElement.style.marginBottom = "10px";
+            meaningElement.style.maxHeight = "150px"; // Giới hạn chiều cao
+            meaningElement.style.overflowY = "auto";  // Tạo thanh cuộn nếu vượt quá
+            popup.appendChild(meaningElement);
+
             floatingContainer?.appendChild(popup);
             isPopupVisible = true;
         };
