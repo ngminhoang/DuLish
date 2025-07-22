@@ -11,31 +11,43 @@ chrome.runtime.onMessage.addListener((message) => {
 function scheduleCardPopup() {
     // const nextTime = Math.floor(Math.random() * (8 - 2 + 1) + 2) * 60 * 1000;
 
-    const nextTime = 10 * 1000;
+    const nextTime = 10 * 1000; // 10 giây
+
     setTimeout(() => {
-        chrome.storage.local.get("savedWords", ({savedWords}: {
+        console.log("Popup timer triggered");
+
+        chrome.storage.local.get("savedWords", ({ savedWords }: {
             savedWords?: Array<{ word: string; shown: boolean }>
         }) => {
             const unseen = (savedWords || []).filter((w: { word: string; shown: boolean }) => !w.shown);
-            if (unseen.length === 0) return scheduleCardPopup();
+
+            if (unseen.length === 0) {
+                console.log("No Word");
+                // Nếu không còn từ nào chưa hiện, thử lại sau
+                return scheduleCardPopup();
+            }
 
             const randomWord = unseen[Math.floor(Math.random() * unseen.length)];
-            chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 for (const tab of tabs) {
                     if (typeof tab.id === "number") {
-                        chrome.tabs.sendMessage(tab.id, {action: "showCard", word: randomWord.word});
+                        chrome.tabs.sendMessage(tab.id, {
+                            action: "showCard",
+                            word: randomWord.word
+                        });
                     }
                 }
+
+                // Sau khi đã gửi popup, lập lịch cho lần tiếp theo
+                scheduleCardPopup();
             });
         });
-
-        scheduleCardPopup(); // Reset timer
     }, nextTime);
 }
 
-scheduleCardPopup(); // Run when background starts
-
-
+// Gọi lần đầu khi background bắt đầu
+scheduleCardPopup();
 chrome.runtime.onMessage.addListener((message) => {
                 if (message.action === "markAsShown" && message.word) {
                     chrome.storage.local.get("savedWords", (data) => {
