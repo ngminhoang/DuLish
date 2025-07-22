@@ -1,5 +1,8 @@
+console.log("Background loaded")
+
 chrome.runtime.onMessage.addListener((message) => {
-    if (message.action === "saveWord" && message.word) {
+    console.log("message received in background script", message);
+    if (message.action == "saveWord" && message.word) {
         chrome.storage.local.get("savedWords", (data) => {
             const words: Array<{ word: string; shown: boolean }> = data.savedWords || [];
             words.push({word: message.word, shown: false});
@@ -10,7 +13,6 @@ chrome.runtime.onMessage.addListener((message) => {
 
 function scheduleCardPopup() {
     // const nextTime = Math.floor(Math.random() * (8 - 2 + 1) + 2) * 60 * 1000;
-
     const nextTime = 10 * 1000; // 10 giây
 
     setTimeout(() => {
@@ -48,6 +50,8 @@ function scheduleCardPopup() {
 
 // Gọi lần đầu khi background bắt đầu
 scheduleCardPopup();
+
+
 chrome.runtime.onMessage.addListener((message) => {
                 if (message.action === "markAsShown" && message.word) {
                     chrome.storage.local.get("savedWords", (data) => {

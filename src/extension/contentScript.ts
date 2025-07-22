@@ -118,8 +118,8 @@ document.addEventListener("mousedown", (e) => {
 
 document.addEventListener("mouseup", async (e) => {
     const selection = window.getSelection()?.toString().trim();
-
-    if (floatingContainer && isPopupVisible) {
+    console.log("Current selected word is:", selection);
+    if (floatingContainer && isPopupVisible && !floatingContainer.contains(e.target as Node)) {
         floatingContainer.remove();
         floatingContainer = null;
         isPopupVisible = false;
@@ -205,8 +205,6 @@ document.addEventListener("mouseup", async (e) => {
     `;
 
         const icon = document.createElement("div");
-        // icon.textContent = "🔍";
-        // icon.textContent = String.fromCodePoint(0x1F300 + Math.floor(Math.random() * (0x1F5FF - 0x1F300)));
         icon.textContent = emojiSet[Math.floor(Math.random() * emojiSet.length)];
         icon.style.cursor = "pointer";
         icon.style.fontSize = "28px";
@@ -236,7 +234,8 @@ document.addEventListener("mouseup", async (e) => {
             saveButton.textContent = "phá 😈 phách";
             saveButton.onclick = (e) => {
                 e.stopPropagation();
-                chrome.runtime.sendMessage({action: "saveWord", word: selection});
+                chrome.runtime.sendMessage(
+                    {action: "saveWord", word: selection});
                 shadowHost.remove();
                 isPopupVisible = false;
             };
@@ -282,7 +281,7 @@ document.addEventListener("mouseup", async (e) => {
                 meaningWrapper.textContent = "Không tìm thấy nghĩa.";
             }
 
-           // Title + phonetic row
+            // Title + phonetic row
             const titleRow = document.createElement("div");
             titleRow.style.display = "flex";
             titleRow.style.flexDirection = "row";
@@ -312,51 +311,175 @@ document.addEventListener("mouseup", async (e) => {
 });
 
 
-
-
-
-
-
-
-
-
 chrome.runtime.onMessage.addListener((message) => {
-            if (message.action === "showCard") {
-                if (document.getElementById("floatingWordCard")) return;
+                    if (message.action === "showCard") {
+                        if (document.getElementById("floatingWordSnake")) return;
 
-                const card = document.createElement("div");
-                card.id = "floatingWordCard";
-                card.style.position = "fixed";
-                card.style.top = "50px";
-                card.style.left = "50px";
-                card.style.padding = "16px";
-                card.style.background = "#fff";
-                card.style.border = "1px solid #aaa";
-                card.style.zIndex = "9999";
-                card.style.boxShadow = "0 4px 12px rgba(0,0,0,0.2)";
-                card.style.transition = "transform 3s ease-in-out";
-                card.innerHTML = `
-              <div style="font-size:18px;">${message.word}</div>
-              <button id="closeWordCard" style="margin-top: 10px;">Đã hiểu</button>
-            `;
+                        const word = (typeof message.word === "string" ? message.word : "").split("").reverse().join("");
+                        const letters = word.split("");
+                        // Insert a gap block (null) between each letter
+                        const snakeBlocks = [];
+                        snakeBlocks.push("closeBtn");
+                        for (let i = 0; i < letters.length; i++) {
+                            snakeBlocks.push(letters[i]);
+                            // if (i < letters.length - 1) snakeBlocks.push("0"); // gap block
+                        }
 
-                document.body.appendChild(card);
+                        // Add the close button as the tail (smallest block)
 
-                // Di chuyển bay lượn
-                let x = 50, y = 50;
-                const interval = setInterval(() => {
-                    x += Math.floor(Math.random() * 40 - 20);
-                    y += Math.floor(Math.random() * 40 - 20);
-                    card.style.transform = `translate(${x}px, ${y}px)`;
-                }, 3000);
 
-                const closeBtn = document.getElementById("closeWordCard");
-                if (closeBtn) {
-                    closeBtn.addEventListener("click", () => {
-                        clearInterval(interval);
-                        card.remove();
-                        chrome.runtime.sendMessage({ action: "markAsShown", word: message.word });
-                    });
-                }
-            }
-        });
+                        const snakeContainer = document.createElement("div");
+                        snakeContainer.id = "floatingWordSnake";
+                        snakeContainer.style.position = "fixed";
+                        snakeContainer.style.top = "0";
+                        snakeContainer.style.left = "0";
+                        snakeContainer.style.zIndex = "999999";
+                        snakeContainer.style.pointerEvents = "none";
+
+                        const blocks: (HTMLDivElement | HTMLButtonElement)[] = [];
+
+                        // Color gradient from tail to head
+                        function lerpColor(a: string, b: string, t: number) {
+                            const ah = a.replace("#", "");
+                            const bh = b.replace("#", "");
+                            const ar = parseInt(ah.substring(0, 2), 16);
+                            const ag = parseInt(ah.substring(2, 4), 16);
+                            const ab = parseInt(ah.substring(4, 6), 16);
+                            const br = parseInt(bh.substring(0, 2), 16);
+                            const bg = parseInt(bh.substring(2, 4), 16);
+                            const bb = parseInt(bh.substring(4, 6), 16);
+                            const rr = Math.round(ar + (br - ar) * t);
+                            const rg = Math.round(ag + (bg - ag) * t);
+                            const rb = Math.round(ab + (bb - ab) * t);
+                            return `rgb(${rr},${rg},${rb})`;
+                        }
+
+                        const colorTail = "#e34c31";
+                        const colorHead = "#dd937c";
+
+                        let closeBtn: HTMLButtonElement | null = null;
+
+                        // Dynamic spacing based on block size
+                        const minSize = 18;
+                        const maxSize = 38;
+                        const getSpacing = (fontSize: number) => fontSize + 6;
+
+                        snakeBlocks.forEach((char, idx) => {
+                            const t = idx / (snakeBlocks.length - 1);
+                            const fontSize = maxSize - (maxSize - minSize) * Math.pow(t, 1.5);
+                            const color = lerpColor(colorTail, colorHead, t);
+
+                            if (char === "closeBtn") {
+                                closeBtn = document.createElement("button");
+                                const dulishImg = document.createElement("img");
+                                    dulishImg.src = chrome.runtime.getURL("dulish.png");
+                                    dulishImg.alt = "Đã hiểu";
+                                    dulishImg.style.width = `${minSize * 2}px`;
+                                    dulishImg.style.height = `${minSize * 2}px`;
+                                    dulishImg.style.display = "block";
+                                    dulishImg.style.pointerEvents = "none";
+
+                                    closeBtn = document.createElement("button");
+                                    closeBtn.appendChild(dulishImg);
+                                    Object.assign(closeBtn.style, {
+                                        position: "absolute",
+                                        background: "transparent",
+                                        border: "none",
+                                        borderRadius: "8px",
+                                        padding: "0",
+                                        cursor: "pointer",
+                                        pointerEvents: "auto",
+                                        zIndex: "1000000",
+                                        fontSize: `${maxSize}px`,
+                                        transition: "transform 0.1s linear"
+                                    });
+                                closeBtn.onclick = () => {
+                                    clearInterval(interval);
+                                    snakeContainer.remove();
+                                    chrome.runtime.sendMessage({action: "markAsShown", word: message.word});
+                                };
+                                snakeContainer.appendChild(closeBtn);
+                                blocks.push(closeBtn);
+                            } else {
+                                const block = document.createElement("div");
+                                if (char === null) {
+                                    Object.assign(block.style, {
+                                        position: "absolute",
+                                        width: "18px",
+                                        height: "18px",
+                                        background: "transparent",
+                                        pointerEvents: "none"
+                                    });
+                                } else {
+                                    block.textContent = char;
+                                    Object.assign(block.style, {
+                                        position: "absolute",
+                                        background: color,
+                                        color: "#fff",
+                                        fontWeight: "bold",
+                                        fontSize: `${fontSize}px`,
+                                        borderRadius: "8px",
+                                        padding: "8px 12px",
+                                        boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                                        transition: "transform 0.1s linear, background 0.2s linear, font-size 0.2s linear",
+                                        pointerEvents: "auto"
+                                    });
+                                }
+                                snakeContainer.appendChild(block);
+                                blocks.push(block);
+                            }
+                        });
+
+                        document.body.appendChild(snakeContainer);
+
+                        // Movement logic
+                        const segmentCount = snakeBlocks.length;
+                        const positions = Array.from({length: segmentCount}, () => ({x: 200, y: 200}));
+
+                        let angle = Math.random() * Math.PI * 2;
+                        const speed = 6;
+
+                        const interval = setInterval(() => {
+                            // Head movement
+                            const head = positions[0];
+                            angle += (Math.random() - 0.5) * 0.4;
+                            const vx = Math.cos(angle) * speed;
+                            const vy = Math.sin(angle) * speed;
+
+                            head.x += vx;
+                            head.y += vy;
+
+                            // Bounce off edges
+                            if (head.x < 0 || head.x > window.innerWidth) angle = Math.PI - angle;
+                            if (head.y < 0 || head.y > window.innerHeight) angle = -angle;
+
+                            // Follow head with dynamic spacing
+                            for (let i = 1; i < segmentCount; i++) {
+                                const prev = positions[i - 1];
+                                const curr = positions[i];
+
+                                const dx = prev.x - curr.x;
+                                const dy = prev.y - curr.y;
+                                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                                // Calculate spacing based on the current and previous block's font size
+                                let prevFontSize = maxSize - (maxSize - minSize) * Math.pow((i - 1) / (segmentCount - 1), 1.5);
+                                let currFontSize = maxSize - (maxSize - minSize) * Math.pow(i / (segmentCount - 1), 1.5);
+                                const dynamicSpacing = getSpacing((prevFontSize + currFontSize) / 2);
+
+                                if (dist > dynamicSpacing) {
+                                    const moveX = dx / dist * (dist - dynamicSpacing);
+                                    const moveY = dy / dist * (dist - dynamicSpacing);
+                                    curr.x += moveX;
+                                    curr.y += moveY;
+                                }
+                            }
+
+                            // Apply positions to blocks
+                            blocks.forEach((block, i) => {
+                                const pos = positions[i];
+                                block.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+                            });
+                        }, 30);
+                    }
+                });
