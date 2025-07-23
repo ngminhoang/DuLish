@@ -1,5 +1,16 @@
 import 'bootstrap/dist/css/bootstrap.min.css';
 
+const snakeFace = [
+    "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇",
+    "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚",
+    "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫", "🤔",
+    "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "🤥",
+    "😎", "🤓", "🤒", "🤕", "🤢", "🤮", "🤧", "😇", "🤡", "🤠",
+    "🥹", "🥺", "🥸", "🥳", "🫨", "🙂‍↔️", "🙂‍↕️", "👿", "😈", "🧐",
+    "🫣", "🫢", "👹", "👺", "💀", "👽", "🤖", "😮", "😯", "😲",
+    "😳", "😦", "😧", "😨", "😰", "😥"
+];
+
 const emojiSet = [
     "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇",
     "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚",
@@ -354,8 +365,8 @@ chrome.runtime.onMessage.addListener((message) => {
                             return `rgb(${rr},${rg},${rb})`;
                         }
 
-                        const colorTail = "#e34c31";
-                        const colorHead = "#dd937c";
+                        const colorTail = "#ffa600";
+                        const colorHead = "#ddca7c";
 
                         let closeBtn: HTMLButtonElement | null = null;
 
@@ -371,16 +382,7 @@ chrome.runtime.onMessage.addListener((message) => {
 
                             if (char === "closeBtn") {
                                 closeBtn = document.createElement("button");
-                                const dulishImg = document.createElement("img");
-                                    dulishImg.src = chrome.runtime.getURL("dulish.png");
-                                    dulishImg.alt = "Đã hiểu";
-                                    dulishImg.style.width = `${minSize * 2}px`;
-                                    dulishImg.style.height = `${minSize * 2}px`;
-                                    dulishImg.style.display = "block";
-                                    dulishImg.style.pointerEvents = "none";
-
-                                    closeBtn = document.createElement("button");
-                                    closeBtn.appendChild(dulishImg);
+                                    closeBtn.textContent = snakeFace[Math.floor(Math.random() * snakeFace.length)];
                                     Object.assign(closeBtn.style, {
                                         position: "absolute",
                                         background: "transparent",
@@ -390,8 +392,9 @@ chrome.runtime.onMessage.addListener((message) => {
                                         cursor: "pointer",
                                         pointerEvents: "auto",
                                         zIndex: "1000000",
-                                        fontSize: `${maxSize}px`,
-                                        transition: "transform 0.1s linear"
+                                        fontSize: `${maxSize * 2}px`,
+                                        transition: "transform 0.1s linear",
+                                        lineHeight: "1",
                                     });
                                 closeBtn.onclick = () => {
                                     clearInterval(interval);
@@ -403,13 +406,14 @@ chrome.runtime.onMessage.addListener((message) => {
                             } else {
                                 const block = document.createElement("div");
                                 if (char === null) {
-                                    Object.assign(block.style, {
-                                        position: "absolute",
-                                        width: "18px",
-                                        height: "18px",
-                                        background: "transparent",
-                                        pointerEvents: "none"
-                                    });
+                                Object.assign(block.style, {
+                                            position: "absolute",
+                                            width: "18px",
+                                            height: "18px",
+                                            background: "transparent",
+                                            pointerEvents: "none",
+                                            borderRadius: "50%"
+                                        });
                                 } else {
                                     block.textContent = char;
                                     Object.assign(block.style, {
@@ -418,7 +422,7 @@ chrome.runtime.onMessage.addListener((message) => {
                                         color: "#fff",
                                         fontWeight: "bold",
                                         fontSize: `${fontSize}px`,
-                                        borderRadius: "8px",
+                                        borderRadius: "25px",
                                         padding: "8px 12px",
                                         boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
                                         transition: "transform 0.1s linear, background 0.2s linear, font-size 0.2s linear",
@@ -437,7 +441,7 @@ chrome.runtime.onMessage.addListener((message) => {
                         const positions = Array.from({length: segmentCount}, () => ({x: 200, y: 200}));
 
                         let angle = Math.random() * Math.PI * 2;
-                        const speed = 6;
+                        const speed = 8;
 
                         const interval = setInterval(() => {
                             // Head movement
