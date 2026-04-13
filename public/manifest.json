@@ -8,7 +8,7 @@
       "icons": {
         "32": "dulish_icon.png"
       },
-      "permissions": ["storage", "tabs", "scripting"],
+      "permissions": ["storage", "tabs", "scripting","identity"],
       "host_permissions": [
         "https://*/*",
         "http://*/*"
@@ -27,5 +27,9 @@
           "resources": ["english-vietnamese.txt","dulish.png"],
           "matches": ["<all_urls>"]
         }
-      ]
+      ],
+      "oauth2": {
+        "client_id": "280739678981-emmtu0c863ujidtk8cvakg1e15c5kc00.apps.googleusercontent.com",
+        "scopes": ["openid", "email", "profile"]
+      }
     }
