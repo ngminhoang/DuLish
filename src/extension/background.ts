@@ -1,3 +1,4 @@
+import { VocabularyService } from '../vocabularyService';
 console.log("Background loaded")
 
 chrome.runtime.onMessage.addListener((message) => {
@@ -9,6 +10,28 @@ chrome.runtime.onMessage.addListener((message) => {
             chrome.storage.local.set({savedWords: words});
         });
     }
+});
+
+chrome.runtime.onMessage.addListener((message) => {
+    if (message.action === "saveWordIntoFirebase") {
+        // 1. Lấy UID của user từ storage
+        chrome.storage.local.get(['uid'], async (result) => {
+            const uid = result.uid;
+
+            if (uid && message.word) {
+                try {
+                    // 2. Gọi hàm saveWord mà chúng ta đã viết trong vocabularyService
+                    await VocabularyService.saveWord(uid, message.word);
+                    console.log(`[DuLish] Đã lưu từ "${message.word}" vào Firestore thành công.`);
+                } catch (error) {
+                    console.error("[DuLish] Lỗi khi lưu vào Firebase:", error);
+                }
+            } else {
+                console.error("[DuLish] Không tìm thấy UID. Vui lòng đăng nhập!");
+            }
+        });
+    }
+    return true; // Giữ channel mở cho async
 });
 
 function scheduleCardPopup() {

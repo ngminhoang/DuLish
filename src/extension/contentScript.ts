@@ -128,6 +128,11 @@ document.addEventListener("mousedown", (e) => {
 });
 
 document.addEventListener("mouseup", async (e) => {
+    const result = await chrome.storage.local.get(['isLoggedIn', 'uid']);
+    if (!result.isLoggedIn || !result.uid) {
+        return;
+    }
+
     const selection = window.getSelection()?.toString().trim();
     console.log("Current selected word is:", selection);
     if (floatingContainer && isPopupVisible && !floatingContainer.contains(e.target as Node)) {
@@ -251,6 +256,16 @@ document.addEventListener("mouseup", async (e) => {
                 isPopupVisible = false;
             };
 
+            const saveFirebaseButton = document.createElement("button");
+            saveFirebaseButton.textContent = "Lưu trữ";
+            saveFirebaseButton.onclick = (e) => {
+                e.stopPropagation();
+                chrome.runtime.sendMessage(
+                    {action: "saveWordIntoFirebase", word: selection});
+                shadowHost.remove();
+                isPopupVisible = false;
+            };
+
             const meaningWrapper = document.createElement("div");
             meaningWrapper.className = "meaning-wrapper";
             if (result.translated) {
@@ -305,6 +320,7 @@ document.addEventListener("mouseup", async (e) => {
             buttonRow.style.flexDirection = "row";
             buttonRow.style.alignItems = "center";
             buttonRow.appendChild(saveButton);
+            buttonRow.appendChild(saveFirebaseButton);
             container.appendChild(buttonRow);
             container.appendChild(titleRow);
             container.appendChild(meaningWrapper);
