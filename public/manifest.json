@@ -8,7 +8,7 @@
       "icons": {
         "32": "dulish_icon.png"
       },
-      "permissions": ["storage", "tabs", "scripting","identity"],
+      "permissions": ["storage", "tabs", "scripting", "identity", "alarms"],
       "host_permissions": [
         "https://*/*",
         "http://*/*"

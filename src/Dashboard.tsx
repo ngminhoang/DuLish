@@ -73,7 +73,7 @@ export default function Dashboard() {
                                     'isLoggedIn': true
                                 };
 
-                                await chrome.storage.local.set(sessionData);
+                                chrome.storage.local.set(sessionData);
 
                                 // Cập nhật State UI
                                 setUserProfile({ email: user.email || '', name: user.displayName || '' });

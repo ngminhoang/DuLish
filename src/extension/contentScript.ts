@@ -1,5 +1,10 @@
 import 'bootstrap/dist/css/bootstrap.min.css';
 
+// Small helper so content script can use async/await with chrome.storage.local
+function storageGet<T = any>(keys: string | string[] | Record<string, any> | null) : Promise<T> {
+    return new Promise((resolve) => chrome.storage.local.get(keys, (result) => resolve(result as T)));
+}
+
 const snakeFace = [
     "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇",
     "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚",
@@ -128,7 +133,7 @@ document.addEventListener("mousedown", (e) => {
 });
 
 document.addEventListener("mouseup", async (e) => {
-    const result = await chrome.storage.local.get(['isLoggedIn', 'uid']);
+    const result = await storageGet(['isLoggedIn', 'uid']);
     if (!result.isLoggedIn || !result.uid) {
         return;
     }
