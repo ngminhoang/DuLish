@@ -166,51 +166,68 @@ document.addEventListener("mouseup", async (e) => {
         const style = document.createElement("style");
         style.textContent = `
       .popup {
-        font-family: 'Segoe UI', sans-serif;
-        background-color: #FCE8E6;
-        color: #222;
-        border-radius: 16px;
-        padding: 16px;
+        font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+        background-color: #ffffff; /* surface */
+        color: #0f172a; /* dark text */
+        border-radius: 14px;
+        padding: 14px;
         max-width: 360px;
-        box-shadow: 0 6px 16px rgba(0,0,0,0.2);
-        border: 1px solid #F9C5B9;
+        box-shadow: 0 8px 24px rgba(30,58,138,0.12);
+        border: 1px solid rgba(30,58,138,0.06);
         font-size: 14px;
-        margin-top: 5px;
+        margin-top: 6px;
       }
-      .popup button {
-        background-color: #E98E74;
-        color: white;
+
+      /* Button styles - primary (filled) and secondary (outline) */
+      .popup .primary-btn {
+        background-color: #1e3a8a; /* primary */
+        color: #ffffff;
         border: none;
-        padding: 6px 12px;
+        padding: 8px 12px;
         border-radius: 10px;
         cursor: pointer;
-        font-weight: 500;
-        margin-bottom: 10px;
+        font-weight: 600;
+        margin-right: 8px;
       }
-      .popup button:hover {
-        background-color: #D87563;
+      .popup .primary-btn:hover {
+        background-color: #16306f;
       }
+      .popup .secondary-btn {
+        background-color: transparent;
+        color: #1e3a8a;
+        border: 1px solid rgba(30,58,138,0.12);
+        padding: 8px 12px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .popup .secondary-btn:hover {
+        background-color: #f1f5f9; /* light surface */
+      }
+
       .title {
-        font-weight: bold;
-        font-size: 18px;
-        color: #E85B51;
-        margin-bottom: 8px;
+        font-weight: 700;
+        font-size: 16px;
+        color: #1e3a8a; /* primary */
+        margin-bottom: 6px;
       }
       .phonetic {
-        font-size: 14px;
-        color: #666;
-        margin-bottom: 12px;
+        font-size: 13px;
+        color: #64748b; /* muted */
+        margin-bottom: 10px;
       }
       .meaning-wrapper {
         max-height: 180px;
         overflow-y: auto;
         margin-bottom: 10px;
+        background: transparent;
+        padding-right: 6px;
       }
       .meaning-wrapper::-webkit-scrollbar {
         width: 6px;
       }
       .meaning-wrapper::-webkit-scrollbar-thumb {
-        background: #ccc;
+        background: rgba(30,58,138,0.16);
         border-radius: 4px;
       }
       .meaning {
@@ -221,7 +238,17 @@ document.addEventListener("mouseup", async (e) => {
         margin: 0;
       }
       .meaning li {
-        margin-bottom: 4px;
+        margin-bottom: 6px;
+      }
+      .meaning .group-title {
+        font-weight: 700;
+        color: #1e3a8a;
+        margin-bottom: 6px;
+      }
+      .meaning .example {
+        color: #0f172a;
+        font-style: italic;
+        margin-top: 4px;
       }
     `;
 
@@ -252,7 +279,8 @@ document.addEventListener("mouseup", async (e) => {
             titlePhoneticText.appendChild(phonetic);
 
             const saveButton = document.createElement("button");
-            saveButton.textContent = "phá 😈 phách";
+            saveButton.className = 'primary-btn';
+            saveButton.textContent = "Phá 😈 phách";
             saveButton.onclick = (e) => {
                 e.stopPropagation();
                 chrome.runtime.sendMessage(
@@ -262,6 +290,7 @@ document.addEventListener("mouseup", async (e) => {
             };
 
             const saveFirebaseButton = document.createElement("button");
+            saveFirebaseButton.className = 'secondary-btn';
             saveFirebaseButton.textContent = "Lưu trữ";
             saveFirebaseButton.onclick = (e) => {
                 e.stopPropagation();
@@ -508,3 +537,75 @@ chrome.runtime.onMessage.addListener((message) => {
                         }, 30);
                     }
                 });
+
+
+// Biến lưu trữ danh sách từ để tránh việc đọc storage quá nhiều lần
+let localActiveWords: string[] = [];
+
+// 1. Hàm thực hiện bôi vàng một node văn bản
+function highlightWords(node: Node) {
+    if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
+        const parent = node.parentElement;
+
+        // Tránh bôi vàng lặp lại hoặc can thiệp vào các thẻ nhạy cảm
+        if (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE' || parent.classList.contains('dulish-highlight')) {
+            return;
+        }
+
+        let text = node.textContent || "";
+        let hasMatch = false;
+
+        // Sắp xếp từ dài trước để tránh lỗi highlight đè (ví dụ: "background" vs "back")
+        const sortedWords = [...localActiveWords].sort((a, b) => b.length - a.length);
+
+        sortedWords.forEach(word => {
+            if (word && text.toLowerCase().includes(word.toLowerCase())) {
+                const regex = new RegExp(`(${word})`, 'gi');
+                text = text.replace(regex, `<mark class="dulish-highlight" style="background-color: #ffeb3b; color: black; padding: 2px; border-radius: 3px;">$1</mark>`);
+                hasMatch = true;
+            }
+        });
+
+        if (hasMatch) {
+            const span = document.createElement('span');
+            span.innerHTML = text;
+            parent.replaceChild(span, node);
+        }
+    } else {
+        // Nếu là Element node, duyệt qua các con của nó
+        node.childNodes.forEach(highlightWords);
+    }
+}
+
+// 2. Khởi tạo Observer để theo dõi thay đổi DOM
+const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+            highlightWords(node);
+        });
+    });
+});
+
+// 3. Hàm chính để kích hoạt
+async function initHighlight() {
+    // Lấy dữ liệu từ storage (dựa trên cấu trúc ảnh bạn gửi)
+    const result = await chrome.storage.local.get(['activeWords']);
+    if (result.activeWords && Array.isArray(result.activeWords)) {
+        // Map để lấy riêng mảng các từ (string)
+        localActiveWords = result.activeWords
+            .map((item: any) => item.word || item.id) // lấy item.word hoặc item.id tùy theo dữ liệu thực tế
+            .filter((word: string) => word && word !== "none");
+
+        // Chạy lần đầu cho toàn bộ trang
+        highlightWords(document.body);
+
+        // Bắt đầu quan sát sự thay đổi (lazy load, infinite scroll...)
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+}
+
+// Chạy khi script được load
+initHighlight();
