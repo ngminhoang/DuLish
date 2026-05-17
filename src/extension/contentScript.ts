@@ -296,6 +296,14 @@ document.addEventListener("mouseup", async (e) => {
                 e.stopPropagation();
                 chrome.runtime.sendMessage(
                     {action: "saveWordIntoFirebase", word: selection});
+
+            // 2. CẬP NHẬT NGAY LẬP TỨC TRÊN UI
+                if (selection && !localActiveWords.includes(selection.toLowerCase())) {
+                    localActiveWords.push(selection.toLowerCase());
+                    // Gọi hàm highlight cho toàn bộ body để tìm và bôi vàng từ vừa chọn
+                    highlightWords(document.body);
+                }
+
                 shadowHost.remove();
                 isPopupVisible = false;
             };
