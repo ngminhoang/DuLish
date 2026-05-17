@@ -4,37 +4,39 @@ import {
     setDoc,
     serverTimestamp,
     collection,
-    getDocs,
-    query,
-    where
+    getDocs
 } from "firebase/firestore";
+import { ensureSchema, type VocabularyObject } from './srsEngine';
 
 export const VocabularyService = {
-    // 1. Lưu từ vựng mới (hoặc cập nhật nếu đã tồn tại)
-    async saveWord(uid: string, word: string) {
-        const wordId = word.toLowerCase().trim();
+    // 1. Lưu từ vựng mới (hoặc cập nhật/mở rộng nếu đã tồn tại)
+    async saveWord(uid: string, vocabObj: any) {
+        const wordId = vocabObj.word_id;
         // Đường dẫn: users/{uid}/vocabularies/{wordId}
         const docRef = doc(db, "users", uid, "vocabularies", wordId);
 
+        // Chuẩn bị dữ liệu cập nhật, bổ sung timestamp của Firestore
+        // merge: true đảm bảo mở rộng bản ghi thay vì thiết lập lại mọi trường dữ liệu
         const data = {
-            word: word,
-            status: 1, // 1: đang học, 0: đã thuộc/ẩn
+            ...vocabObj,
             updatedAt: serverTimestamp(),
-            createdAt: serverTimestamp() // Firestore sẽ thông minh không ghi đè nếu đã có
         };
 
         return await setDoc(docRef, data, { merge: true });
     },
 
-    // 2. Lấy danh sách từ vựng để "con sâu" hiển thị
-    async getActiveWords(uid: string) {
+    // 2. Lấy toàn bộ danh sách từ vựng, tự động nâng cấp và mở rộng schema của từ cũ
+    async getActiveWords(uid: string): Promise<VocabularyObject[]> {
         const vocabRef = collection(db, "users", uid, "vocabularies");
-        const q = query(vocabRef, where("status", "==", 1));
+        const querySnapshot = await getDocs(vocabRef);
 
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
+        return querySnapshot.docs.map(docSnapshot => {
+            const data = docSnapshot.data();
+            // Đảm bảo và mở rộng schema cũ một cách an toàn
+            return ensureSchema({
+                id: docSnapshot.id,
+                ...data
+            });
+        });
     }
-};
+};

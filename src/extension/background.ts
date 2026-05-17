@@ -1,4 +1,6 @@
 import { VocabularyService } from '../vocabularyService';
+import { mockVocabularies } from '../mockData';
+import { ensureSchema } from '../srsEngine';
 console.log("Background loaded")
 
 // Helper wrappers to use chrome.storage.local with async/await.
@@ -63,17 +65,26 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
             chrome.storage.local.get(['lastSyncTime', 'uid'], async (result) => {
                 const uid = result.uid;
 
-                if (uid && message.word) {
+                if (uid && message.vocabObj) {
                     try {
                         // 2. Gọi hàm saveWord mà chúng ta đã viết trong vocabularyService
-                        await VocabularyService.saveWord(uid, message.word);
-                        console.log(`[DuLish] Đã lưu từ "${message.word}" vào Firestore thành công.`);
+                        // Merges and extends the record without wiping existing fields
+                        await VocabularyService.saveWord(uid, message.vocabObj);
+                        console.log(`[DuLish] Đã lưu từ "${message.vocabObj.raw_text}" vào Firestore thành công.`);
 
                         // 2. Silent Delta Update: Cập nhật thẳng vào storage local
-                        const { activeWords } = await storageGet('activeWords');
-                        const newWords = [...(activeWords || []), { word: message.word, status: 1 }];
+                        const { activeWords } = await storageGet<{ activeWords?: any[] }>('activeWords');
+                        // Ensure the new word fits the full schema
+                        const extendedWord = ensureSchema(message.vocabObj);
+                        
+                        let newWords = [];
+                        const exists = (activeWords || []).some(w => w.word_id === extendedWord.word_id);
+                        if (exists) {
+                            newWords = (activeWords || []).map(w => w.word_id === extendedWord.word_id ? extendedWord : w);
+                        } else {
+                            newWords = [...(activeWords || []), extendedWord];
+                        }
                         await storageSet({ activeWords: newWords });
-                        // KHÔNG cần fetch lại toàn bộ danh sách ở đây.
 
                     } catch (error) {
                         console.error("[DuLish] Lỗi khi lưu vào Firebase:", error);
@@ -87,6 +98,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     });
 }
 
+/*
 function scheduleCardPopup() {
     // const nextTime = Math.floor(Math.random() * (8 - 2 + 1) + 2) * 60 * 1000;
     const nextTime = 10 * 1000; // 10 giây
@@ -125,12 +137,14 @@ function scheduleCardPopup() {
 }
 
 // Gọi lần đầu khi background bắt đầu
-// Only schedule popup timer when running inside extension context
+// Hiding the snake button and disabling popup scheduling as requested for Phase 1
 if (typeof chrome !== 'undefined' && chrome.runtime) {
-    scheduleCardPopup();
+    console.log('[background] Snake card popup disabled for Phase 1 to focus on save word flow.');
+    // scheduleCardPopup();
 } else {
     console.warn('[background] chrome.runtime not available - skipping scheduleCardPopup in non-extension context');
 }
+*/
 
 
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
@@ -298,6 +312,18 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
                 }
             });
             return true; // Bắt buộc phải có để dùng sendResponse bất đồng bộ
+        }
+    });
+}
+
+// Auto-seed mock vocabularies on installation if activeWords is empty or missing
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalled) {
+    chrome.runtime.onInstalled.addListener(async () => {
+        console.log("[DuLish] Extension installed/updated. Checking activeWords...");
+        const data = await storageGet<{ activeWords?: any[] }>('activeWords');
+        if (!data.activeWords || data.activeWords.length === 0) {
+            console.log("[DuLish] ActiveWords empty. Seeding mock vocabularies for Phase 1...");
+            await storageSet({ activeWords: mockVocabularies });
         }
     });
 }
