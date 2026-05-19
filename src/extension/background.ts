@@ -316,6 +316,32 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     });
 }
 
+// Lắng nghe thay đổi UID trong storage (như khi đăng nhập hoặc đăng xuất) để thực hiện đồng bộ ngay lập tức
+if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener(async (changes, areaName) => {
+        if (areaName === 'local' && changes.uid) {
+            const newUid = changes.uid.newValue;
+            const oldUid = changes.uid.oldValue;
+            if (newUid && newUid !== oldUid) {
+                console.log("[Storage] Phát hiện UID thay đổi (đăng nhập), tiến hành đồng bộ từ Firebase...");
+                await performFullSync(newUid);
+            } else if (!newUid) {
+                console.log("[Storage] Đã đăng xuất, xóa danh sách activeWords...");
+                await storageSet({ activeWords: [], lastSyncTime: 0 });
+            }
+        }
+    });
+}
+
+// Thực hiện đồng bộ ngay khi background script được load (nếu đã đăng nhập)
+(async () => {
+    const data = await storageGet(['uid']);
+    if (data.uid) {
+        console.log("[Background Init] Phát hiện người dùng đã đăng nhập, tự động đồng bộ từ Firebase...");
+        await performFullSync(data.uid);
+    }
+})();
+
 // Auto-seed mock vocabularies on installation if activeWords is empty or missing
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalled) {
     chrome.runtime.onInstalled.addListener(async () => {

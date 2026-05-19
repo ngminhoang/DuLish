@@ -55,6 +55,12 @@ style.textContent = `
     background: #ccc;
     border-radius: 4px;
   }
+  .dulish-word {
+    transition: background-color 0.4s ease, color 0.4s ease, box-shadow 0.4s ease, opacity 0.5s ease !important;
+  }
+  .dulish-word.dulish-fade-in {
+    opacity: 0 !important;
+  }
   .dulish-word.dulish-cooling {
     background-color: rgba(255, 215, 0, 0.18) !important;
     color: inherit !important;
@@ -62,6 +68,7 @@ style.textContent = `
     cursor: default !important;
     border-bottom: 1px dashed rgba(255, 215, 0, 0.7) !important;
     display: inline !important;
+    opacity: 1 !important;
   }
   .dulish-word.dulish-ready {
     background-color: #ffeb3b !important;
@@ -71,10 +78,21 @@ style.textContent = `
     cursor: pointer !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.15) !important;
     display: inline !important;
+    opacity: 1 !important;
   }
   .dulish-word.dulish-ready:hover {
     background-color: #fdd835 !important;
     box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
+  }
+  .dulish-word.dulish-incorrect {
+    background-color: rgba(231, 76, 60, 0.18) !important;
+    color: #b71c1c !important;
+    border-radius: 3px !important;
+    font-weight: bold !important;
+    cursor: default !important;
+    border-bottom: 1px dashed rgba(231, 76, 60, 0.5) !important;
+    display: inline !important;
+    opacity: 1 !important;
   }
 `;
 document.head.appendChild(style);
@@ -347,6 +365,9 @@ document.addEventListener("mouseup", async (e) => {
             const saveFirebaseButton = document.createElement("button");
             saveFirebaseButton.className = 'secondary-btn';
             saveFirebaseButton.textContent = "Lưu trữ";
+            if (!result.translated || result.meanings.length === 0) {
+                saveFirebaseButton.style.display = "none";
+            }
             saveFirebaseButton.onclick = (e) => {
                 e.stopPropagation();
 
@@ -363,6 +384,24 @@ document.addEventListener("mouseup", async (e) => {
                     }).join('; ')
                     : "Không tìm thấy nghĩa.";
 
+                // Lấy nghĩa chung nhất (dòng nghĩa đầu tiên bắt đầu bằng dấu "-")
+                let general_meaning = "";
+                if (result.translated && result.meanings) {
+                    for (const g of result.meanings) {
+                        const firstLine = g.lines.find(l => l.trim().startsWith('-'));
+                        if (firstLine) {
+                            // Xóa ký tự "-" ở đầu và loại bỏ nội dung trong ngoặc đơn/ngoặc vuông
+                            general_meaning = firstLine.replace(/^[-]/, "").replace(/\(.*?\)/g, "").replace(/\[.*?\]/g, "").replace(/\s+/g, " ").trim();
+                            break;
+                        }
+                    }
+                }
+                if (!general_meaning) {
+                    let clean = vietnamese_meaning.includes(':') ? vietnamese_meaning.substring(vietnamese_meaning.indexOf(':') + 1) : vietnamese_meaning;
+                    clean = clean.split('=')[0].replace(/[-]/g, '').replace(/[\s,;+]+$/, '').trim();
+                    general_meaning = clean || selection;
+                }
+
                 // 3. Khởi tạo đối tượng từ vựng mới theo đúng schema SRS mới
                 const nowStr = new Date().toISOString();
                 const rawVocabObj = {
@@ -370,6 +409,7 @@ document.addEventListener("mouseup", async (e) => {
                     raw_text: selection,
                     lemma: lemma,
                     vietnamese_meaning: vietnamese_meaning,
+                    general_meaning: general_meaning,
                     type: selection.trim().includes(' ') ? 'phrase' : 'word',
                     current_streak: 0,
                     next_review_time: nowStr,
@@ -386,7 +426,7 @@ document.addEventListener("mouseup", async (e) => {
                     vocabObj: vocabObj
                 });
 
-                // 5. Cập nhật cục bộ tức thì trên UI
+                // 5. Cập nhật cục bộ tức thì trên UI với hiệu ứng slow-load
                 const exists = localActiveWords.some(obj =>
                     (obj.lemma || '').toLowerCase().trim() === lemma.toLowerCase().trim() ||
                     (obj.raw_text || '').toLowerCase().trim() === selection.toLowerCase().trim()
@@ -394,7 +434,12 @@ document.addEventListener("mouseup", async (e) => {
 
                 if (!exists) {
                     localActiveWords.push(vocabObj);
-                    highlightWords(document.body);
+                    // Bôi vàng tối ưu: chỉ quét phần tử cha chứa vùng bôi đen, tránh quét toàn bộ trang
+                    const range = window.getSelection()?.getRangeAt(0);
+                    const parentElement = range?.commonAncestorContainer.parentElement || document.body;
+                    highlightWords(parentElement);
+                    // Slow-load: stagger fade-in cho các span vừa được tạo
+                    staggerFadeInNewSpans(parentElement);
                 }
 
                 shadowHost.remove();
@@ -723,6 +768,10 @@ function highlightWords(node: Node) {
             const span = document.createElement('span');
             span.innerHTML = newHtml;
             parent.replaceChild(span, node);
+
+            // Đánh dấu các span mới là fade-in (ẩn trước) để stagger hiệu ứng
+            const newSpans = span.querySelectorAll<HTMLElement>('.dulish-word');
+            newSpans.forEach(s => s.classList.add('dulish-fade-in'));
         }
     } else {
         // Duyệt qua các node con (chuyển sang array để tránh lỗi dịch vị node khi DOM thay đổi)
@@ -731,41 +780,213 @@ function highlightWords(node: Node) {
     }
 }
 
-// 2. Khởi tạo Observer để theo dõi thay đổi DOM
-const observer = new MutationObserver((mutations) => {
+/**
+ * Slow-load: Stagger fade-in effect cho các span dulish-word vừa được highlight.
+ * Mỗi span sẽ xuất hiện lần lượt với delay nhỏ, tạo cảm giác load từ từ mượt mà.
+ */
+function staggerFadeInNewSpans(root: Node, delayPerSpan = 80) {
+    const fadeSpans = (root instanceof HTMLElement ? root : document.body)
+        .querySelectorAll<HTMLElement>('.dulish-word.dulish-fade-in');
+    fadeSpans.forEach((span, index) => {
+        setTimeout(() => {
+            span.classList.remove('dulish-fade-in');
+        }, index * delayPerSpan);
+    });
+}
+
+// Helper để tìm các phần tử trực tiếp chứa text nodes phục vụ lazy-load
+function findTextContainers(node: HTMLElement, list: HTMLElement[] = []): HTMLElement[] {
+    if (
+        node.tagName === 'SCRIPT' ||
+        node.tagName === 'STYLE' ||
+        node.tagName === 'TEXTAREA' ||
+        node.tagName === 'INPUT' ||
+        node.classList.contains('dulish-word') ||
+        node.closest('.popup') ||
+        node.closest('#dulish-review-host')
+    ) {
+        return list;
+    }
+
+    let hasDirectText = false;
+    for (let i = 0; i < node.childNodes.length; i++) {
+        const child = node.childNodes[i];
+        if (child.nodeType === Node.TEXT_NODE && child.textContent?.trim()) {
+            hasDirectText = true;
+            break;
+        }
+    }
+
+    if (hasDirectText) {
+        list.push(node);
+    } else {
+        for (let i = 0; i < node.children.length; i++) {
+            const child = node.children[i];
+            if (child instanceof HTMLElement) {
+                findTextContainers(child, list);
+            }
+        }
+    }
+    return list;
+}
+
+// 2. Thiết lập IntersectionObserver cho việc bôi vàng lazy-load mượt mà, tối ưu CPU
+const lazyHighlightObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            const element = entry.target as HTMLElement;
+            // Hủy theo dõi ngay sau khi khớp để tránh chạy lại nhiều lần
+            observer.unobserve(element);
+            highlightWords(element);
+            // Slow-load: stagger fade-in cho các span vừa được highlight trong viewport
+            staggerFadeInNewSpans(element);
+        }
+    });
+}, {
+    // Tự động quét và bôi vàng trước khi phần tử lọt vào khung hình 150px
+    rootMargin: "150px 0px"
+});
+
+// 2.5. Observer theo dõi các phần tử DOM mới được thêm vào trang (như lazy load, infinite scroll)
+const domObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
-            highlightWords(node);
+            if (node instanceof HTMLElement) {
+                const containers = findTextContainers(node);
+                containers.forEach(container => {
+                    lazyHighlightObserver.observe(container);
+                });
+            }
         });
     });
 });
 
-// 3. Hàm kích hoạt bôi vàng trang web
+// 3. Hàm kích hoạt bôi vàng trang web theo cơ chế Lazy Load
 async function initHighlight() {
     const result = await chrome.storage.local.get(['activeWords']);
     if (result.activeWords && Array.isArray(result.activeWords)) {
-        // Áp dụng ensureSchema cho toàn bộ từ để đảm bảo tương thích dữ liệu mở rộng
         localActiveWords = result.activeWords.map(item => ensureSchema(item));
 
-        // Bôi vàng toàn bộ trang lần đầu
-        highlightWords(document.body);
+        // Phân tách trang thành các khối chứa văn bản nhỏ và đăng ký Intersection Observer
+        const containers = findTextContainers(document.body);
+        containers.forEach(container => {
+            lazyHighlightObserver.observe(container);
+        });
 
-        // Theo dõi thay đổi lazy load, scroll vô tận
-        observer.observe(document.body, {
+        // Lắng nghe thay đổi DOM để tiếp tục đăng ký lazy-load cho phần tử mới
+        domObserver.observe(document.body, {
             childList: true,
             subtree: true
         });
     }
 }
 
+// 3.5 Lắng nghe thay đổi activeWords trong storage để tự động bôi vàng tức thì khi đăng nhập/đồng bộ xong
+if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName === 'local' && changes.activeWords) {
+            console.log("[DuLish ContentScript] Dữ liệu activeWords thay đổi, tiến hành làm mới đăng ký lazy-load...");
+            const newWords = changes.activeWords.newValue;
+            if (Array.isArray(newWords)) {
+                localActiveWords = newWords.map(item => ensureSchema(item));
+
+                // Reset toàn bộ Observer cũ để tránh quan sát lặp
+                lazyHighlightObserver.disconnect();
+                domObserver.disconnect();
+
+                // Đăng ký lại lazy-load toàn bộ trang
+                const containers = findTextContainers(document.body);
+                containers.forEach(container => {
+                    lazyHighlightObserver.observe(container);
+                });
+
+                // Kích hoạt lại quan sát thay đổi DOM
+                domObserver.observe(document.body, {
+                    childList: true,
+                    subtree: true
+                });
+            } else {
+                localActiveWords = [];
+            }
+        }
+    });
+}
+
 // 4. Multiple Choice Review Modal logic
+let activeReviewWordObj: VocabularyObject | null = null;
+let activeReviewHost: HTMLElement | null = null;
+
+// Function to handle outside clicks or manual close, marking it as incorrect
+async function dismissActiveReview(isCorrect = false) {
+    if (!activeReviewWordObj || !activeReviewHost) return;
+
+    const vocabObj = activeReviewWordObj;
+    const host = activeReviewHost;
+
+    // Reset global references immediately to avoid double firing
+    activeReviewWordObj = null;
+    activeReviewHost = null;
+
+    if (!isCorrect) {
+        // Trigger incorrect SRS calculations
+        const srsResult = calculateNextReview(vocabObj.current_streak, false);
+        const nowStr = new Date().toISOString();
+
+        const updatedVocab: VocabularyObject = {
+            ...vocabObj,
+            current_streak: srsResult.current_streak,
+            next_review_time: srsResult.next_review_time,
+            status: srsResult.status,
+            last_updated: nowStr
+        };
+
+        // 1. Send update message to background
+        chrome.runtime.sendMessage({
+            action: "saveWordIntoFirebase",
+            vocabObj: updatedVocab
+        });
+
+        // 2. Update in local array cache
+        const cacheIndex = localActiveWords.findIndex(w => w.word_id === vocabObj.word_id);
+        if (cacheIndex !== -1) {
+            localActiveWords[cacheIndex] = updatedVocab;
+        }
+
+        // 3. Cập nhật span sang trạng thái incorrect (đỏ nhạt đậm) với slow-load
+        const matchedSpans = Array.from(
+            document.querySelectorAll<HTMLElement>(
+                `.dulish-word[data-id="${vocabObj.word_id}"]`
+            )
+        );
+        matchedSpans.forEach((span, idx) => {
+            setTimeout(() => {
+                span.className = "dulish-word dulish-incorrect";
+            }, idx * 100);
+        });
+
+        console.log(`[DuLish Review] Dismissed / Clicked outside. Marked as INCORRECT. Streak: ${srsResult.current_streak}. Retry in 10 min.`);
+    }
+
+    // Smooth fade out and removal
+    const overlay = host.shadowRoot?.querySelector(".overlay") as HTMLElement;
+    if (overlay) {
+        overlay.classList.remove("active");
+        setTimeout(() => {
+            host.remove();
+        }, 150);
+    } else {
+        host.remove();
+    }
+}
+
 function generateChoices(correctMeaning: string, currentWordId: string): string[] {
     const distractors: string[] = [];
-    
-    // Extract unique meanings from other active words
+
+    // Extract unique meanings from other active words, prioritizing general_meaning
     const otherMeanings = localActiveWords
-        .filter(w => w.word_id !== currentWordId && w.vietnamese_meaning)
-        .map(w => w.vietnamese_meaning.trim());
+        .filter(w => w.word_id !== currentWordId)
+        .map(w => (w.general_meaning || w.vietnamese_meaning || "").trim())
+        .filter(Boolean);
 
     // Fallback distractors in Vietnamese
     const premiumFallbacks = [
@@ -803,215 +1024,112 @@ function generateChoices(correctMeaning: string, currentWordId: string): string[
 }
 
 function showReviewCard(vocabObj: VocabularyObject, targetSpan: HTMLElement) {
-    // 1. Generate the choices
-    const correctMeaning = vocabObj.vietnamese_meaning || "Không tìm thấy nghĩa.";
+    // If a card is already active, dismiss it first (which counts as incorrect for the previous word!)
+    if (activeReviewWordObj) {
+        dismissActiveReview(false);
+    }
+
+    const correctMeaning = vocabObj.general_meaning || vocabObj.vietnamese_meaning || "Không tìm thấy nghĩa.";
     const choices = generateChoices(correctMeaning, vocabObj.word_id);
 
-    // 2. Create the Shadow Host container
+    // Calculate coordinates for positioning directly underneath the clicked word
+    const rect = targetSpan.getBoundingClientRect();
+    const top = rect.bottom + window.scrollY + 6;
+    const left = rect.left + window.scrollX;
+
+    // Create shadow host container
     const shadowHost = document.createElement("div");
-    shadowHost.id = "dulish-review-modal-host";
-    shadowHost.style.position = "fixed";
-    shadowHost.style.top = "0";
-    shadowHost.style.left = "0";
-    shadowHost.style.width = "100vw";
-    shadowHost.style.height = "100vh";
-    shadowHost.style.zIndex = "2147483647"; // Max z-index to overlay everything
+    shadowHost.id = "dulish-review-host";
+    shadowHost.style.position = "absolute";
+    shadowHost.style.top = `${top}px`;
+    shadowHost.style.left = `${left}px`;
+    shadowHost.style.zIndex = "2147483647";
     shadowHost.style.pointerEvents = "auto";
 
     const shadowRoot = shadowHost.attachShadow({ mode: "open" });
 
-    // 3. Shadow DOM Styles
+    // CSS Styling - Extremely minimal, clean, in-context design
     const style = document.createElement("style");
     style.textContent = `
         .overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(10, 10, 10, 0.6);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
             opacity: 0;
-            transition: opacity 0.25s ease-out;
+            transform: translateY(-8px);
+            transition: opacity 0.15s ease-out, transform 0.15s ease-out;
         }
         .overlay.active {
             opacity: 1;
+            transform: translateY(0);
         }
-        .card {
-            background: rgba(22, 22, 24, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 20px;
-            padding: 32px;
-            width: 440px;
-            max-width: 90%;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(25px);
-            -webkit-backdrop-filter: blur(25px);
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
-            color: #ffffff;
-            text-align: center;
-            transform: scale(0.92);
-            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-            position: relative;
-        }
-        .overlay.active .card {
-            transform: scale(1);
-        }
-        .close-btn {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: transparent;
-            border: none;
-            font-size: 22px;
-            color: rgba(255, 255, 255, 0.35);
-            cursor: pointer;
-            transition: color 0.2s ease, transform 0.2s ease;
-            line-height: 1;
-            padding: 0;
-            outline: none;
-        }
-        .close-btn:hover {
-            color: #ffffff;
-            transform: scale(1.1);
-        }
-        .badge {
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: #ffd43b;
-            margin-bottom: 12px;
-            display: inline-block;
-            background: rgba(253, 212, 59, 0.1);
-            padding: 4px 12px;
-            border-radius: 20px;
-            border: 1px solid rgba(253, 212, 59, 0.2);
-        }
-        .question {
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.7);
-            margin: 0 0 16px 0;
-            font-weight: 400;
-        }
-        .word {
-            font-size: 36px;
-            font-weight: 800;
-            color: #ffffff;
-            margin: 0 0 28px 0;
-            letter-spacing: -0.5px;
-            text-shadow: 0 4px 15px rgba(255, 255, 255, 0.1);
+        .mini-card {
+            background: #19191b;
+            border: 1px solid #313135;
+            border-radius: 8px;
+            padding: 8px;
+            width: 270px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
         }
         .options-list {
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            width: 100%;
+            gap: 5px;
         }
         .option-btn {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            padding: 16px 20px;
-            width: 100%;
-            color: rgba(255, 255, 255, 0.95);
-            font-size: 15px;
+            background: #232325;
+            border: 1px solid #353539;
+            border-radius: 5px;
+            padding: 8px 12px;
+            color: #dcdcdc;
+            font-size: 13px;
             font-weight: 500;
             text-align: left;
             cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.12s ease;
             outline: none;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         .option-btn:hover:not(.disabled) {
-            background: rgba(255, 255, 255, 0.07);
-            border-color: rgba(255, 255, 255, 0.25);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.25);
-        }
-        .option-btn:active:not(.disabled) {
-            transform: translateY(0);
+            background: #303033;
+            border-color: #4b4b50;
+            color: #ffffff;
         }
         .option-btn.correct {
             background: rgba(46, 204, 113, 0.15) !important;
             border-color: #2ecc71 !important;
             color: #2ecc71 !important;
-            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.25) !important;
             font-weight: 700;
         }
         .option-btn.incorrect {
             background: rgba(231, 76, 60, 0.15) !important;
             border-color: #e74c3c !important;
             color: #e74c3c !important;
-            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.25) !important;
             font-weight: 700;
         }
         .option-btn.disabled {
             cursor: not-allowed;
-            opacity: 0.6;
+            opacity: 0.65;
         }
         .icon {
-            font-size: 16px;
+            font-size: 12px;
             font-weight: bold;
-        }
-        .streak-badge {
-            margin-top: 20px;
-            font-size: 13px;
-            color: rgba(255, 255, 255, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-        }
-        .streak-fire {
-            color: #ff9f43;
         }
     `;
 
-    // 4. Modal HTML structure
     const overlay = document.createElement("div");
     overlay.className = "overlay";
 
-    const card = document.createElement("div");
-    card.className = "card";
-
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "close-btn";
-    closeBtn.innerHTML = "×";
-    closeBtn.onclick = () => {
-        dismissModal();
-    };
-
-    const badge = document.createElement("div");
-    badge.className = "badge";
-    badge.textContent = `Streak ${vocabObj.current_streak}/10`;
-
-    const question = document.createElement("div");
-    question.className = "question";
-    question.textContent = "Chọn nghĩa chính xác của từ:";
-
-    const word = document.createElement("div");
-    word.className = "word";
-    word.textContent = vocabObj.raw_text;
+    const miniCard = document.createElement("div");
+    miniCard.className = "mini-card";
 
     const optionsList = document.createElement("div");
     optionsList.className = "options-list";
 
     let hasAnswered = false;
-
-    // Helper to close modal with transition
-    const dismissModal = () => {
-        overlay.classList.remove("active");
-        setTimeout(() => {
-            shadowHost.remove();
-        }, 250);
-    };
 
     choices.forEach(choice => {
         const optionBtn = document.createElement("button");
@@ -1025,8 +1143,8 @@ function showReviewCard(vocabObj: VocabularyObject, targetSpan: HTMLElement) {
 
             const isCorrect = choice === correctMeaning;
             const optionButtons = optionsList.querySelectorAll(".option-btn");
-            
-            // Disable all buttons and show styling
+
+            // Disable buttons and show color states
             optionButtons.forEach(btn => {
                 btn.classList.add("disabled");
                 const btnText = btn.textContent;
@@ -1045,7 +1163,7 @@ function showReviewCard(vocabObj: VocabularyObject, targetSpan: HTMLElement) {
                 }
             });
 
-            // Trigger SRS next state calculation
+            // Calculate SRS values
             const srsResult = calculateNextReview(vocabObj.current_streak, isCorrect);
             const nowStr = new Date().toISOString();
 
@@ -1069,49 +1187,71 @@ function showReviewCard(vocabObj: VocabularyObject, targetSpan: HTMLElement) {
                 localActiveWords[cacheIndex] = updatedVocab;
             }
 
-            // 3. Direct DOM highlight class update
+            // 3. Cập nhật class cho TẤT CẢ các span cùng word_id trên toàn trang
+            //    (không chỉ targetSpan), để tránh click vào từ đó ở vị trí khác
+            //    Sử dụng hiệu ứng slow-load: lần lượt cập nhật class với delay
+            const matchedSpans = Array.from(
+                document.querySelectorAll<HTMLElement>(
+                    `.dulish-word[data-id="${vocabObj.word_id}"]`
+                )
+            );
+
             if (isCorrect) {
-                console.log(`[DuLish Review] Correct! Upgraded streak to ${srsResult.current_streak}. Next review: ${srsResult.next_review_time}`);
-                targetSpan.className = "dulish-word dulish-cooling";
+                // Trả lời đúng: chuyển sang cooling (vàng nhạt), slow-load lần lượt
+                matchedSpans.forEach((span, idx) => {
+                    setTimeout(() => {
+                        span.className = "dulish-word dulish-cooling";
+                    }, idx * 100);
+                });
+                console.log(`[DuLish Review] Correct! Streak: ${srsResult.current_streak}`);
             } else {
-                console.log(`[DuLish Review] Incorrect. Decreased streak to ${srsResult.current_streak}. Next review: ${srsResult.next_review_time}`);
+                // Trả lời sai: chuyển sang incorrect (đỏ nhạt đậm), slow-load lần lượt
+                matchedSpans.forEach((span, idx) => {
+                    setTimeout(() => {
+                        span.className = "dulish-word dulish-incorrect";
+                    }, idx * 100);
+                });
+                console.log(`[DuLish Review] Incorrect. Streak: ${srsResult.current_streak}. Retry in 10 min.`);
             }
 
-            // 4. Auto close card after short delay
+            // Reset active review globals immediately since answer was submitted successfully
+            activeReviewWordObj = null;
+            activeReviewHost = null;
+
+            // Close card after a brief moment
             setTimeout(() => {
-                dismissModal();
-            }, 1200);
+                overlay.classList.remove("active");
+                setTimeout(() => {
+                    shadowHost.remove();
+                }, 150);
+            }, 1000);
         };
 
         optionsList.appendChild(optionBtn);
     });
 
-    const streakBadge = document.createElement("div");
-    streakBadge.className = "streak-badge";
-    streakBadge.innerHTML = `<span class="streak-fire">🔥</span> Hộp SRS ôn tập từ vựng`;
-
-    card.appendChild(closeBtn);
-    card.appendChild(badge);
-    card.appendChild(question);
-    card.appendChild(word);
-    card.appendChild(optionsList);
-    card.appendChild(streakBadge);
-
-    overlay.appendChild(card);
+    miniCard.appendChild(optionsList);
+    overlay.appendChild(miniCard);
     shadowRoot.appendChild(style);
     shadowRoot.appendChild(overlay);
 
     document.body.appendChild(shadowHost);
 
-    // Trigger open animations
+    // Set active review globals for click outside detection
+    activeReviewWordObj = vocabObj;
+    activeReviewHost = shadowHost;
+
+    // Trigger open animation
     setTimeout(() => {
         overlay.classList.add("active");
     }, 10);
 }
 
-// 5. Click event delegation for review card triggering
+// 5. Click event delegation for review card triggering & outside clicks
 document.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
+
+    // A. Trigger card if clicking a ready word
     if (target.classList.contains("dulish-ready")) {
         e.stopPropagation();
         e.preventDefault();
@@ -1121,6 +1261,15 @@ document.addEventListener("click", (e) => {
             if (vocabObj) {
                 showReviewCard(vocabObj, target);
             }
+        }
+        return;
+    }
+
+    // B. Check for outside click to dismiss as incorrect answer
+    if (activeReviewHost) {
+        const isClickInsideHost = e.composedPath().includes(activeReviewHost);
+        if (!isClickInsideHost) {
+            dismissActiveReview(false);
         }
     }
 });
